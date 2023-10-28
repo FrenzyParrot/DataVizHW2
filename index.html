@@ -54,9 +54,12 @@
         <!-- Title goes here -->
         <h1>Data Visualization Assignment 2</h1>
         <!-- Name goes here -->
-        <h3>Tanay Sayala</h3>
+        <h3>by Tanay Sayala</h3>
+        <h2>MA Population in 1980</h2>
         <div class="fig1"></div>
+        <h2>MA Population change from 2000 to 2010</h2>
         <div class="fig2"></div>
+        <h2>MA Counties by Gini Index (2017)</h2>
         <div class="fig3"></div>
 
 
@@ -287,10 +290,27 @@
             // convert topology data to geojson 
             const geojson = topojson.feature(topo_data, topo_data.objects.ma);
 
-            let clonedJson = JSON.parse(JSON.stringify(geojson));
-            for (i of clonedJson.features)
-                i.properties.gini = csv_data.find((item) => item.id.slice(-5) === clonedJson["FIPS_STCO"])
-            console.log(clonedJson);
+            // Join the data using the county FIPS codes as the key
+            const giniMap = new Map(csv_data.map(d => [d.id.slice(-5), d['Estimate!!Gini Index']]));
+            const countyMap = new Map(csv_data.map(d => [d.id.slice(-5), d['Geographic Area Name']]));
+            geojson.features.forEach(d => {
+                let temp = Array.from(giniMap).filter(x => x[0] == d.properties.FIPS_STCO).map(x =>Object.values(x).slice(0, 2)[1])[0];
+                let temp2 = Array.from(countyMap).filter(x => x[0] == d.properties.FIPS_STCO).map(x =>Object.values(x).slice(0, 2)[1])[0];
+                d.properties.giniIndex = parseFloat(temp);
+                d.properties.countyName = temp2;
+            });
+
+            // Filter the joined data to only include data from 2017
+            const filteredData = csv_data.filter(d => d['year'] === '2017');
+
+            // Create a color scale based on the Gini-index values
+            const colorScale = d3.scaleSequential()
+                .domain(d3.extent(filteredData, d => d['Estimate!!Gini Index']))
+                .interpolator(d3.interpolateViridis);
+
+            /*console.log(giniMap);
+            console.log(geojson);
+            console.log(filteredData);*/
 
             /*-------------------------------------------------------*/
             /*----------------------Projections----------------------*/
@@ -317,16 +337,16 @@
             /*-------------------------------------------------------*/
             //https://observablehq.com/@d3/working-with-color
             //https://colorbrewer2.org/#type=diverging&scheme=RdYlBu&n=6
-            const colorInterpolator = d3.interpolateRgbBasis(['#d73027','#fc8d59','#fee090','#e0f3f8','#91bfdb','#4575b4'].reverse())
+            const colorInterpolator = d3.interpolateRgbBasisClosed(["purple", "green", "orange"])
                 // if the data is scaled using log scale
             const logScale = d3.scaleLog()
                 .domain(d3.extent(geojson.features, (d) => {
-                    return d['properties']['FIPS_STCO']
+                    return d['properties']['giniIndex']
                 }))
             // if the data is scaled using linear scale
             const linearScale = d3.scaleLinear()
                 .domain(d3.extent(geojson.features, (d) => {
-                    return d['properties']['FIPS_STCO']
+                    return d['properties']['giniIndex']
                 }))
             /*-------------------------------------------------------*/
             /*---------------------- Tooltip ------------------------*/
@@ -342,13 +362,13 @@
                 .enter()
                 .append("path")
                 .attr("d", d => geoPath_generator(d))
-                //.attr("fill", d => colorInterpolator(logScale(d['properties']['POP2010'])))
-                .attr("fill", d => colorInterpolator(logScale(d['properties']['FIPS_STCO'])))
+                //.attr("fill", d => colorInterpolator(logScale(d['properties']['giniIndex'])))
+                .attr("fill", d => colorInterpolator(linearScale(d['properties']['giniIndex'])))
                 .on("mouseenter", (m, d) => {
                     tooltip.transition()
                         .duration(200)
                         .style("opacity", .9)
-                    tooltip.html(d['properties']['TOWN'])
+                    tooltip.html(d['properties']['countyName'].slice(0,-15) + "<br>" + "Gini Index: " + d['properties']['giniIndex'])
                         .style("left", (m.clientX + 10) + "px")
                         .style("top", (m.clientY + window.pageYOffset - 28) + "px");
                 })
@@ -364,6 +384,7 @@
                 })
 
             }
+            
             generateMap1(topology_data,".fig1",svgWidth,svgHeight)
             generateMap2(topology_data,".fig2",svgWidth,svgHeight)
             generateMap3(topology_data,".fig3",svgWidth,svgHeight)
